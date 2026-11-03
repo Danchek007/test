@@ -1,19 +1,22 @@
 FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 
-# --- всё нужное из apt (без кастомных curl-установок) ---
+# --- ВАЖНО: добавили curl и ca-certificates ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    xvfb x11vnc xfce4 xfce4-terminal dbus-x11 \
+    xvfb x11vnc \
+    xfce4-session xfce4-terminal xfwm4 xfdesktop4 xfce4-panel \
+    thunar dbus-x11 xterm \
     novnc websockify \
     openssh-server \
     nginx \
     supervisor \
     apache2-utils \
     tini \
+    curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# --- websocat: SSH over WebSocket (одна статичная бинарь, стабильные URL) ---
+# --- websocat: SSH over WebSocket ---
 ARG WEBSOCAT_VERSION=v1.13.0
 RUN ARCH=$(dpkg --print-architecture) && \
     case "$ARCH" in \
@@ -27,19 +30,20 @@ RUN ARCH=$(dpkg --print-architecture) && \
     chmod +x /usr/local/bin/websocat && \
     /usr/local/bin/websocat --version
 
-# --- sshd: разрешаем логин по паролю только на localhost ---
+# --- sshd ---
 RUN mkdir -p /var/run/sshd && \
     sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
     sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config && \
     printf '\nListenAddress 127.0.0.1\n' >> /etc/ssh/sshd_config
 
-# --- noVNC: websockify ---
-# websockify будет слушать 127.0.0.1:6081, наружу через nginx /vnc/
 COPY nginx.conf /etc/nginx/sites-available/default
 COPY supervisord.conf /etc/supervisor/conf.d/services.conf
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
+# Koyeb/Render ждёт трафик на 8000/6080
+ENV PORT=6080
 EXPOSE 6080
+
 ENTRYPOINT ["/usr/bin/tini","--"]
 CMD ["/start.sh"]
